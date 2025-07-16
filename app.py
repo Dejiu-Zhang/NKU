@@ -8,10 +8,10 @@ from openai import OpenAI
 # ✅ 初始化 Flask 应用
 app = Flask(__name__)
 
-# ✅ 读取 OpenAI API 密钥（Render 中配置 OPENAI_API_KEY 环境变量）
+# ✅ 初始化 OpenAI 客户端（使用环境变量中的 API Key）
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# ✅ 加载 embedding 文件
+# ✅ 加载嵌入文件
 embedding_path = "nku_memory_vectors_full.npz"
 data = np.load(embedding_path, allow_pickle=True)
 chunk_ids = data["chunk_ids"]
@@ -59,9 +59,9 @@ def index():
         except Exception as e:
             answer = f"❌ 出错啦：{str(e)}"
             refs = []
-        return render_template("chat.html", user_input=user_input, answer=answer, refs=refs)
-    return render_template("chat.html", user_input="", answer="", refs=[])
+        return render_template("index.html", user_input=user_input, answer=answer, refs=refs)
+    return render_template("index.html", user_input="", answer="", refs=[])
 
-# ✅ 启动服务
+# ✅ 启动服务（本地调试用）
 if __name__ == "__main__":
     app.run(debug=True)
