@@ -15,10 +15,23 @@ app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-here")  # 用于 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # ✅ 加载嵌入向量与 chunk 文本
-with open("id2chunks.json", "r", encoding="utf-8") as f:
-    id2chunks = json.load(f)
+# 处理 JSONL 格式文件
+id2chunks = {}
+with open("nku_chunks_multilevel.jsonl", "r", encoding="utf-8") as f:
+    for line_num, line in enumerate(f):
+        if line.strip():  # 跳过空行
+            try:
+                data = json.loads(line)
+                # 使用行号作为 ID，或者使用数据中的 id 字段
+                chunk_id = str(line_num) if 'id' not in data else str(data['id'])
+                # 假设每行包含 'text' 或 'content' 字段
+                chunk_text = data.get('text', data.get('content', line.strip()))
+                id2chunks[chunk_id] = chunk_text
+            except json.JSONDecodeError:
+                print(f"警告：第{line_num}行JSON解析失败，跳过")
+                continue
 
-with open("id2embeds.npy", "rb") as f:
+with open("nku_memory_vectors_full.npy", "rb") as f:
     all_embeddings = np.load(f)
 
 chunk_ids = list(id2chunks.keys())
@@ -165,4 +178,5 @@ def clear_history():
 
 # ✅ 启动
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=7860)
+    port = int(os.environ.get("PORT", 7860))
+    app.run(debug=False, host="0.0.0.0", port=port)
