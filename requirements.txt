@@ -1,3 +1,4 @@
 openai
 numpy
 tqdm
+faiss-cpu
