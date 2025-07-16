@@ -2,3 +2,4 @@ openai
 numpy
 tqdm
 faiss-cpu
+flask
