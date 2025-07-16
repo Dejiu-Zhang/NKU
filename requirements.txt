@@ -3,3 +3,4 @@ numpy
 tqdm
 faiss-cpu
 flask
+jinja2
