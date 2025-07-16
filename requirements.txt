@@ -2,5 +2,5 @@ openai
 numpy
 tqdm
 faiss-cpu
-flask
+Flask==2.3.3
 jinja2
