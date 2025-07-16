@@ -242,7 +242,7 @@ def generate_response(user_query, chat_history, retrieved_chunks):
         current_prompt = (
             f"以下是南开大学新生指南中的相关内容：\n{context}\n\n"
             f"请根据上述信息回答这个问题：{user_query}\n"
-            f"⚠️ 注意：尽量直接使用原文中的表述，不要用你自己的语言改写，回答越详细越好。但是！如果上述信息不能很好地回答用户的问题，你绝对不要瞎编！！就说暂时还没有找到这类信息，建议用户自己去看原版的《南开大学爬行指南》"
+            f"⚠️ 注意：尽量直接使用原文中的表述，不要用你自己的语言改写，回答越详细越好。但是！你绝对不要瞎编！！"
         )
         
         messages.append({"role": "user", "content": current_prompt})
