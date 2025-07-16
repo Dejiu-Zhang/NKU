@@ -14,25 +14,69 @@ app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-here")  # 用于 
 # ✅ 初始化 OpenAI 客户端
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+# ✅ 检查文件是否存在
+import os
+print("当前目录文件列表：", os.listdir('.'))
+
 # ✅ 加载嵌入向量与 chunk 文本
 # 处理 JSONL 格式文件
 id2chunks = {}
-with open("nku_chunks_multilevel.jsonl", "r", encoding="utf-8") as f:
-    for line_num, line in enumerate(f):
-        if line.strip():  # 跳过空行
-            try:
-                data = json.loads(line)
-                # 使用行号作为 ID，或者使用数据中的 id 字段
-                chunk_id = str(line_num) if 'id' not in data else str(data['id'])
-                # 假设每行包含 'text' 或 'content' 字段
-                chunk_text = data.get('text', data.get('content', line.strip()))
-                id2chunks[chunk_id] = chunk_text
-            except json.JSONDecodeError:
-                print(f"警告：第{line_num}行JSON解析失败，跳过")
-                continue
+jsonl_file = "nku_chunks_multilevel.jsonl"
+npz_file = "nku_memory_vectors_full.npz"
 
-with open("nku_memory_vectors_full.npy", "rb") as f:
-    all_embeddings = np.load(f)
+# 检查文件是否存在
+if not os.path.exists(jsonl_file):
+    print(f"错误：找不到文件 {jsonl_file}")
+    exit(1)
+
+if not os.path.exists(npz_file):
+    print(f"错误：找不到文件 {npz_file}")
+    exit(1)
+
+# 读取 JSONL 文件
+try:
+    with open(jsonl_file, "r", encoding="utf-8") as f:
+        for line_num, line in enumerate(f):
+            if line.strip():  # 跳过空行
+                try:
+                    data = json.loads(line)
+                    # 使用行号作为 ID，或者使用数据中的 id 字段
+                    chunk_id = str(line_num) if 'id' not in data else str(data['id'])
+                    # 假设每行包含 'text' 或 'content' 字段
+                    chunk_text = data.get('text', data.get('content', line.strip()))
+                    id2chunks[chunk_id] = chunk_text
+                except json.JSONDecodeError:
+                    print(f"警告：第{line_num}行JSON解析失败，跳过")
+                    continue
+    print(f"成功加载 {len(id2chunks)} 个文档块")
+except Exception as e:
+    print(f"读取JSONL文件失败：{e}")
+    exit(1)
+
+# 读取嵌入向量 (.npz 格式)
+try:
+    with np.load(npz_file) as data:
+        # 打印 npz 文件中的所有数组名称
+        print(f"NPZ文件中的数组：{list(data.keys())}")
+        
+        # 通常 npz 文件中的数组可能叫 'arr_0', 'embeddings', 'vectors' 等
+        # 我们需要找到正确的数组名称
+        if 'arr_0' in data:
+            all_embeddings = data['arr_0']
+        elif 'embeddings' in data:
+            all_embeddings = data['embeddings']
+        elif 'vectors' in data:
+            all_embeddings = data['vectors']
+        else:
+            # 如果不确定名称，就使用第一个数组
+            array_name = list(data.keys())[0]
+            all_embeddings = data[array_name]
+            print(f"使用数组：{array_name}")
+            
+    print(f"成功加载嵌入向量，形状：{all_embeddings.shape}")
+except Exception as e:
+    print(f"读取NPZ文件失败：{e}")
+    exit(1)
 
 chunk_ids = list(id2chunks.keys())
 embedding_dim = all_embeddings.shape[1]
