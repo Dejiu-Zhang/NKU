@@ -2,77 +2,66 @@ import os
 import json
 import numpy as np
 import faiss
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, render_template
 from openai import OpenAI
 
-# ========= 配置区 =========
-EMBEDDING_PATH = "nku_memory_vectors_full.npz"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-MODEL_NAME = "gpt-4o-mini"
-TOP_K = 6
-# ==========================
+# ✅ 初始化 Flask 应用
+app = Flask(__name__)
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# ✅ 读取 OpenAI API 密钥（Render 中配置 OPENAI_API_KEY 环境变量）
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# ✅ 加载向量库
-data = np.load(EMBEDDING_PATH, allow_pickle=True)
+# ✅ 加载 embedding 文件
+embedding_path = "nku_memory_vectors_full.npz"
+data = np.load(embedding_path, allow_pickle=True)
 chunk_ids = data["chunk_ids"]
 all_embeddings = data["all_embeddings"]
-id2chunks = data["id2chunks"].item()  # 注意：是纯字符串
+id2chunks = data["id2chunks"].item()
 
-# ✅ 构建 FAISS 索引
+# ✅ FAISS 索引构建
 d = all_embeddings.shape[1]
 index = faiss.IndexFlatL2(d)
 index.add(all_embeddings)
 
-# ✅ Flask app
-app = Flask(__name__)
+# ✅ 检索函数
+def retrieve_chunks(query, top_k=6):
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=[query]
+    )
+    query_vec = np.array(response.data[0].embedding, dtype="float32").reshape(1, -1)
+    D, I = index.search(query_vec, top_k)
+    return [id2chunks[chunk_ids[i]] for i in I[0]]
 
-# ✅ 路由：主页
-@app.route("/")
-def index():
-    return render_template("index.html")  # 需要有 templates/index.html 页面
-
-# ✅ 路由：Chat API
-@app.route("/api/chat", methods=["POST"])
-def chat():
-    try:
-        user_query = request.json.get("query", "").strip()
-        if not user_query:
-            return jsonify({"error": "Empty query"}), 400
-
-        # Step 1: 向量化
-        response = client.embeddings.create(
-            model="text-embedding-3-small",
-            input=[user_query]
-        )
-        query_vec = np.array(response.data[0].embedding, dtype="float32").reshape(1, -1)
-
-        # Step 2: 检索相似文本
-        D, I = index.search(query_vec, TOP_K)
-        retrieved_chunks = [id2chunks[chunk_ids[i]] for i in I[0]]
-        context = "\n---\n".join(retrieved_chunks)
-
-        # Step 3: 构造 prompt
-        prompt = f"""你是一个热心的南开大学新生向导助手。以下是与用户问题最相关的手册内容：
-
+# ✅ Chatbot 回答函数
+def answer_question(query):
+    chunks = retrieve_chunks(query, top_k=6)
+    context = "\n---\n".join(chunks)
+    prompt = f"""你是一个热心的南开大学新生向导助手。以下是与用户问题最相关的手册内容：
+    
 {context}
 
-现在，请根据上述信息回答用户的问题：
+请根据以上内容，回答用户的问题：{query}。尽量使用原文中的语言进行引用。"""
 
-{user_query}
-请尽量直接使用原文中的表述，尽量不要用你自己的语言改写。"""
+    reply = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return reply.choices[0].message.content.strip(), chunks
 
-        # Step 4: 调用 GPT 模型回答
-        reply = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        answer = reply.choices[0].message.content.strip()
-        return jsonify({"answer": answer})
+# ✅ 首页路由
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        user_input = request.form["user_input"]
+        try:
+            answer, refs = answer_question(user_input)
+        except Exception as e:
+            answer = f"❌ 出错啦：{str(e)}"
+            refs = []
+        return render_template("chat.html", user_input=user_input, answer=answer, refs=refs)
+    return render_template("chat.html", user_input="", answer="", refs=[])
 
-    except Exception as e:
-        return jsonify({"error": f"❌ 出错啦：{str(e)}"}), 500
-
+# ✅ 启动服务
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(debug=True)
