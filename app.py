@@ -5,25 +5,19 @@ import faiss
 from flask import Flask, request, render_template
 from openai import OpenAI
 
-# ✅ 初始化 Flask 应用
 app = Flask(__name__)
-
-# ✅ 初始化 OpenAI 客户端（读取环境变量中的 API Key）
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# ✅ 加载向量嵌入和 chunk 映射
 embedding_path = "nku_memory_vectors_full.npz"
 data = np.load(embedding_path, allow_pickle=True)
 chunk_ids = data["chunk_ids"]
 all_embeddings = data["all_embeddings"]
 id2chunks = data["id2chunks"].item()
 
-# ✅ 构建 FAISS 向量索引
 embedding_dim = all_embeddings.shape[1]
 faiss_index = faiss.IndexFlatL2(embedding_dim)
 faiss_index.add(all_embeddings)
 
-# ✅ 检索函数：根据用户 query 返回最相似的记忆块
 def retrieve_chunks(query, top_k=6):
     response = client.embeddings.create(
         model="text-embedding-3-small",
@@ -33,7 +27,6 @@ def retrieve_chunks(query, top_k=6):
     D, I = faiss_index.search(query_vec, top_k)
     return [id2chunks[chunk_ids[i]] for i in I[0]]
 
-# ✅ 问答函数：调用 GPT-4o-mini 给出回答
 def answer_question(query):
     chunks = retrieve_chunks(query, top_k=6)
     context = "\n---\n".join(chunks)
@@ -49,7 +42,6 @@ def answer_question(query):
     )
     return reply.choices[0].message.content.strip(), chunks
 
-# ✅ 主路由（避免与 faiss_index 重名，改为 home）
 @app.route("/", methods=["GET", "POST"])
 def home():
     if request.method == "POST":
@@ -62,6 +54,5 @@ def home():
         return render_template("index.html", user_input=user_input, answer=answer, refs=refs)
     return render_template("index.html", user_input="", answer="", refs=[])
 
-# ✅ 启动服务（支持本地调试和 Render 部署）
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
