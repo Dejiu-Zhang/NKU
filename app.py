@@ -33,50 +33,86 @@ if not os.path.exists(npz_file):
     print(f"错误：找不到文件 {npz_file}")
     exit(1)
 
-# 读取 JSONL 文件
-try:
-    with open(jsonl_file, "r", encoding="utf-8") as f:
-        for line_num, line in enumerate(f):
-            if line.strip():  # 跳过空行
-                try:
-                    data = json.loads(line)
-                    # 使用行号作为 ID，或者使用数据中的 id 字段
-                    chunk_id = str(line_num) if 'id' not in data else str(data['id'])
-                    # 假设每行包含 'text' 或 'content' 字段
-                    chunk_text = data.get('text', data.get('content', line.strip()))
-                    id2chunks[chunk_id] = chunk_text
-                except json.JSONDecodeError:
-                    print(f"警告：第{line_num}行JSON解析失败，跳过")
-                    continue
-    print(f"成功加载 {len(id2chunks)} 个文档块")
-except Exception as e:
-    print(f"读取JSONL文件失败：{e}")
+# ✅ 加载嵌入向量与 chunk 文本
+id2chunks = {}
+jsonl_file = "nku_chunks_multilevel.jsonl"
+npz_file = "nku_memory_vectors_full.npz"
+
+# 检查文件是否存在
+if not os.path.exists(npz_file):
+    print(f"错误：找不到文件 {npz_file}")
     exit(1)
 
-# 读取嵌入向量 (.npz 格式)
+# 首先尝试从 NPZ 文件中读取所有数据
 try:
     with np.load(npz_file) as data:
-        # 打印 npz 文件中的所有数组名称
         print(f"NPZ文件中的数组：{list(data.keys())}")
         
-        # 通常 npz 文件中的数组可能叫 'arr_0', 'embeddings', 'vectors' 等
-        # 我们需要找到正确的数组名称
-        if 'arr_0' in data:
-            all_embeddings = data['arr_0']
+        # 读取嵌入向量
+        if 'all_embeddings' in data:
+            all_embeddings = data['all_embeddings']
+            print("使用数组：all_embeddings")
         elif 'embeddings' in data:
             all_embeddings = data['embeddings']
+            print("使用数组：embeddings")
         elif 'vectors' in data:
             all_embeddings = data['vectors']
+            print("使用数组：vectors")
         else:
-            # 如果不确定名称，就使用第一个数组
-            array_name = list(data.keys())[0]
-            all_embeddings = data[array_name]
-            print(f"使用数组：{array_name}")
+            # 查找二维数组（嵌入向量应该是二维的）
+            found_embedding = False
+            for array_name in data.keys():
+                if len(data[array_name].shape) == 2:
+                    all_embeddings = data[array_name]
+                    print(f"使用二维数组：{array_name}")
+                    found_embedding = True
+                    break
             
+            if not found_embedding:
+                print("错误：找不到合适的嵌入向量数组")
+                exit(1)
+        
+        # 尝试从 NPZ 文件中读取 id2chunks
+        if 'id2chunks' in data:
+            try:
+                stored_id2chunks = data['id2chunks'].item()  # .item() 用于读取字典
+                print(f"从NPZ文件读取到 {len(stored_id2chunks)} 个文档块")
+                id2chunks = {str(k): str(v) for k, v in stored_id2chunks.items()}
+            except:
+                print("NPZ中的id2chunks读取失败，将从JSONL文件读取")
+                
     print(f"成功加载嵌入向量，形状：{all_embeddings.shape}")
 except Exception as e:
     print(f"读取NPZ文件失败：{e}")
     exit(1)
+
+# 如果从 NPZ 文件中没有成功读取到 id2chunks，则从 JSONL 文件读取
+if len(id2chunks) == 0:
+    print("从JSONL文件读取文档块...")
+    if not os.path.exists(jsonl_file):
+        print(f"错误：找不到文件 {jsonl_file}")
+        exit(1)
+    
+    try:
+        with open(jsonl_file, "r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f):
+                if line.strip():  # 跳过空行
+                    try:
+                        data = json.loads(line)
+                        # 使用行号作为 ID，或者使用数据中的 id 字段
+                        chunk_id = str(line_num) if 'id' not in data else str(data['id'])
+                        # 假设每行包含 'text' 或 'content' 字段
+                        chunk_text = data.get('text', data.get('content', line.strip()))
+                        id2chunks[chunk_id] = chunk_text
+                    except json.JSONDecodeError:
+                        print(f"警告：第{line_num}行JSON解析失败，跳过")
+                        continue
+        print(f"从JSONL文件成功加载 {len(id2chunks)} 个文档块")
+    except Exception as e:
+        print(f"读取JSONL文件失败：{e}")
+        exit(1)
+
+print(f"最终加载了 {len(id2chunks)} 个文档块和 {all_embeddings.shape} 的嵌入向量")
 
 chunk_ids = list(id2chunks.keys())
 embedding_dim = all_embeddings.shape[1]
